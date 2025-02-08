@@ -1,0 +1,62 @@
+/* Contact.css */
+.contact-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    text-align: center;
+    background: linear-gradient(135deg, #a18cd1, #fbc2eb);
+    color: black;
+    font-family: "Poppins", sans-serif;
+    animation: fadeIn 1.2s ease-in-out;
+  }
+  
+  .contact-container h1 {
+    font-size: 3rem;
+    font-weight: bold;
+    margin-bottom: 15px;
+    color: white;
+  }
+  
+  .contact-container p {
+    font-size: 1.4rem;
+    margin: 5px 0;
+  }
+  
+  .contact-container .contact-box {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 15px;
+    border-radius: 10px;
+    display: inline-block;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+  }
+  
+  .contact-container .contact-box:hover {
+    transform: scale(1.05);
+    background-color: white;
+  }
+  
+  /* Animation */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  /* Responsive */
+  @media (max-width: 768px) {
+    .contact-container h1 {
+      font-size: 2.2rem;
+    }
+    .contact-container p {
+      font-size: 1.2rem;
+    }
+  }
+  

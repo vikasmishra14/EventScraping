@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from "react";
-import GetTicketsModal from "./GetTicketsModal"; // Import modal component
-import "./EventList.css";
-import { useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import GetTicketsModal from "./GetTicketsModal";
 
-const EventList = () => {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+const EventDetails = () => {
+  const { id } = useParams();
+const [event,setEvents]=useState([]);
+const [loading , setLoading]=useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const navigate=useNavigate();
+  useEffect(()=>{
 
-  useEffect(() => {
     const fetchEvents = async () => {
+        setLoading(true);
       try {
-        const response = await fetch("http://localhost:5000/api/events");
+        const response = await fetch(`http://localhost:5000/api/events/${id}`);
         if (!response.ok) throw new Error("Failed to fetch events");
 
         const data = await response.json();
@@ -25,22 +25,15 @@ const EventList = () => {
     };
 
     fetchEvents();
-  }, []);
-
-  const handleCardClick = (id) => {
-    console.log(id);
-    navigate(`/events/${id}`); // Remove the colon (:)
-  };
-  
+  }, [id]);
   return (
     <div className="event-container">
       {loading ? (
         <div className="loader"></div> // Animation while loading
       ) : (
-        <div className="event-list">
-          {events.map((event, index) => (
-            <div className="event-card" key={index}>
-              <img src={event.imgSrc} alt={event.title} className="event-image"  onClick={()=>handleCardClick(event._id)}  />
+        <div className="event-list"> 
+            <div className="event-card">
+              <img src={event.imgSrc} alt={event.title} className="event-image" />
               <div className="event-info">
                 <h3 className="event-title">{event.title}</h3>
                 <p className="event-date">{event.date}</p>
@@ -53,7 +46,7 @@ const EventList = () => {
                 </button>
               </div>
             </div>
-          ))}
+          
         </div>
       )}
 
@@ -64,4 +57,4 @@ const EventList = () => {
   );
 };
 
-export default EventList;
+export default EventDetails;

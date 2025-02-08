@@ -1,124 +1,168 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const nodemailer = require('nodemailer');
-const cron = require('node-cron');
-const puppeteer = require('puppeteer');
-const Event = require('./models/Event');
-const cors = require('cors');
+require("dotenv").config();
+const express = require("express");
+const mongoose = require("mongoose");
+const nodemailer = require("nodemailer");
+const cron = require("node-cron");
+const puppeteer = require("puppeteer");
+const Event = require("./models/Event");
+const cors = require("cors"); 
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/eventsdb', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => console.log('Error connecting to MongoDB:', err));
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGODB_URL, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log("✅ Connected to MongoDB"))
+  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
 
-  
+/**
+ * Scrolls the page to load lazy-loaded content.
+ */
+async function autoScroll(page) {
+  await page.evaluate(async () => {
+    await new Promise((resolve) => {
+      let totalHeight = 0;
+      const distance = 200;
+      const timer = setInterval(() => {
+        window.scrollBy(0, distance);
+        totalHeight += distance;
 
-  const scrapeEvents = async () => {
-    try {
-      console.log("Starting Puppeteer...");  // Log the start of the scraping process
-      const browser = await puppeteer.launch({ headless: true }); // Set headless: false to see the browser
-      const page = await browser.newPage();
-  
-      // Go to the Eventbrite page
-      console.log("Navigating to Eventbrite...");
-      await page.goto('https://www.eventbrite.com/d/australia--sydney/events/', {
-        waitUntil: 'domcontentloaded',
-        timeout: 60000, // Increase timeout to ensure the page is loaded fully
+        if (totalHeight >= document.body.scrollHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, 100);
+    });
+  });
+}
+
+/**
+ * Scrapes event data from Eventbrite.
+ */
+const scrapeEvents = async () => {
+  try {
+    console.log("🟡 Launching Puppeteer...");
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+
+    console.log("🔵 Navigating to Eventbrite...");
+    await page.goto("https://www.eventbrite.com/d/australia--sydney/events/", {
+      waitUntil: "networkidle2",
+      timeout: 90000,
+    });
+
+    console.log("🟢 Scrolling to load more events...");
+    await autoScroll(page);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Allow extra time for images to load
+
+    console.log("🟡 Extracting event details...");
+    const events = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll(".discover-vertical-event-card")).map((eventElement) => {
+        const title = eventElement.querySelector(".event-card-link")?.getAttribute("aria-label")?.trim() || "Unknown Title";
+        const dateElement = eventElement.querySelector("p[class*='Typography_root']");
+    const date = dateElement ? dateElement.textContent.trim() : "N/A";
+        const location = eventElement.querySelector("[data-event-location]")?.getAttribute("data-event-location") || "Unknown Location";
+        const link = eventElement.querySelector(".event-card-link")?.href || "#";
+        const imgElement = eventElement.querySelector(".event-card-image");
+        
+        let imgSrc = imgElement?.getAttribute("data-src") || 
+                     imgElement?.getAttribute("srcset")?.split(" ")[0] || 
+                     imgElement?.src || "";
+
+        return { title, date, location, link, imgSrc };
       });
-  
-      console.log("Waiting for event cards or a general event container...");
-      // Wait for a more general selector that ensures the event section is loaded
-      await page.waitForSelector('.search-event-card', { timeout: 60000 }); // Modify this to the appropriate selector
-  
-      console.log("Extracting events...");
-      // Extract event data
-      const events = await page.evaluate(() => {
-        const eventData = [];
-        const eventElements = document.querySelectorAll('.search-event-card'); // Modify this to the appropriate selector
-  
-        eventElements.forEach(eventElement => {
-          const title = eventElement.querySelector('.eds-text-bs--fixed')?.textContent.trim();
-          const date = eventElement.querySelector('time')?.getAttribute('datetime');
-          const location = eventElement.querySelector('.card-text--truncated')?.textContent.trim();
-          const description = eventElement.querySelector('.eds-text-color--ui-700')?.textContent.trim();
-          const link = eventElement.querySelector('a')?.getAttribute('href');
-  
-          if (title && date && location && description && link) {
-            eventData.push({ title, date, location, description, link });
-          }
-        });
-  
-        return eventData;
-      });
-  
-      console.log("Events extracted:", events);  // Log the events
-  
-      // Save events to the database
-      console.log("Saving events to the database...");
-      await Event.deleteMany(); // Clear the old events
-      await Event.insertMany(events); // Save new events
-      console.log('Events scraped and saved successfully!');
-  
-      await browser.close(); // Close the browser
-    } catch (error) {
-      console.error('Error scraping events:', error);
-    }
-  };
-  
-  // Scrape events immediately when starting the server
-  scrapeEvents();
-  
-  // Set up cron job to scrape events every 24 hours (optional)
-  cron.schedule('0 0 * * *', scrapeEvents);  // Run at midnight every day
-  
-// Route to get events from the database
-app.get('/api/events', async (req, res) => {
+    });
+
+    console.log(`✅ Extracted ${events.length} events`);
+
+    if (events.length > 0) {
+      console.log("🔵 Saving events to the database...");
+      await Event.deleteMany();
+      await Event.insertMany(events);
+      console.log("✅ Events saved successfully!");
+    } else {
+      console.log("⚠️ No events found. Check selectors.");
+    } 
+    await browser.close();
+  } catch (error) {
+    console.error("❌ Scraping Error:", error);
+  }
+};
+
+scrapeEvents(); // Initial scrape
+cron.schedule("0 0 * * *", scrapeEvents); // Run daily
+
+// Get events from the database
+app.get("/api/events", async (req, res) => {
   try {
     const events = await Event.find();
-    console.log(events);
     res.json(events);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching events', error });
+    res.status(500).json({ message: "Error fetching events", error });
+  }
+});
+// get event by id 
+
+app.get('/api/events/:id', async (req, res) => {
+  try {
+    const { id } = req.params;  
+    // Check if id is a valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid event ID" });
+    }
+
+    const event = await Event.findById(id);
+    if (!event) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    res.json(event);
+  } catch (error) {
+    console.error("Error fetching event:", error);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
-// Route to handle email collection
-app.post('/api/collect-email', async (req, res) => {
+ 
+
+// Email collection route
+app.post("/api/collect-email", async (req, res) => {
   const { email, eventUrl } = req.body;
 
-  // Send confirmation email to the user
   const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
     auth: {
-      user: 'your-email@gmail.com',  // Replace with your email
-      pass: 'your-email-password',   // Replace with your email password
+      user: process.env.EMAIL,
+      pass: process.env.PASSWORD,
     },
   });
 
   const mailOptions = {
-    from: 'your-email@gmail.com',
+    from: process.env.EMAIL,
     to: email,
-    subject: 'Thank you for requesting tickets',
-    text: `Thank you for your interest. Click here to get your tickets: ${eventUrl}`,
+    subject: "Event Ticket Request",
+    text: `Click here to get your tickets: ${eventUrl}`,
   };
 
   try {
     await transporter.sendMail(mailOptions);
-    res.status(200).json({ message: 'Email sent successfully!' });
+    res.status(200).json({ message: "Email sent successfully!" });
   } catch (error) {
-    res.status(500).json({ message: 'Error sending email', error });
+    console.error("❌ Email sending failed:", error); // Log full error
+    res.status(500).json({ message: "Error sending email", error: error.message });
   }
 });
 
+
 // Start server
-app.listen(5000, () => {
-  console.log('Server running on http://localhost:5000');
-});
+const PORT = 5000;
+app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
