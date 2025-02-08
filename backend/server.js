@@ -48,7 +48,12 @@ async function autoScroll(page) {
 const scrapeEvents = async () => {
   try {
     console.log("🟡 Launching Puppeteer...");
-    const browser = await puppeteer.launch({ headless: true });
+    const browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: true,
+      executablePath: process.env.CHROME_PATH || puppeteer.executablePath(),
+    });
+    
     const page = await browser.newPage();
 
     console.log("🔵 Navigating to Eventbrite...");
