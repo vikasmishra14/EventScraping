@@ -12,7 +12,7 @@ const EventList = () => {
   useEffect(() => {
     const fetchEvents = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/events");
+        const response = await fetch("https://eventscraping.onrender.com/api/events");
         if (!response.ok) throw new Error("Failed to fetch events");
 
         const data = await response.json();
