@@ -8,8 +8,7 @@
   "main": "index.js",
  "scripts": {
   "start": "node backend/index.js",
-
-  "postinstall": "apt-get update && apt-get install -y chromium-browser"
+ "postinstall": "npm install puppeteer --unsafe-perm=true"
 }
 ,
   "dependencies": {
