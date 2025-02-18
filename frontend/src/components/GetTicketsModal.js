@@ -36,22 +36,25 @@ const GetTicketsModal = ({ event, onClose }) => {
 
   const handleOtpSubmit = async (e) => {
     e.preventDefault();
-
-    if (!otp || otp.length !== 6) {
+  
+    // Trim the OTP to remove any leading/trailing whitespaces
+    const trimmedOtp = otp.trim();
+  
+    if (!trimmedOtp || trimmedOtp.length !== 6) {
       setError("Please enter a valid 6-digit OTP.");
       return;
     }
-
+  
     setLoading(true);
     try {
       const response = await fetch("https://eventscraping.onrender.com/api/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otpEntered: otp }),
+        body: JSON.stringify({ email, otpEntered: trimmedOtp }),
       });
-
+  
       if (!response.ok) throw new Error("Invalid OTP");
-
+  
       // OTP is verified, redirect to the event's official page
       const data = await response.json();
       if (data.eventData) {
@@ -63,6 +66,7 @@ const GetTicketsModal = ({ event, onClose }) => {
       setLoading(false);
     }
   };
+  
 
   return (
     <div className="modal">
