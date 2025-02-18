@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
+const otpStore = {};  
 const cron = require("node-cron");
 const puppeteer = require("puppeteer");
 const Event = require("./models/Event");
@@ -18,8 +19,8 @@ mongoose
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.error("❌ MongoDB Connection Error:", err));
+  .then(() => console.log(" Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB Connection Error:", err));
 
 /**
  * Scrolls the page to load lazy-loaded content.
@@ -47,7 +48,7 @@ async function autoScroll(page) {
  */
 const scrapeEvents = async () => {
   try {
-    console.log("🟡 Launching Puppeteer...");
+    console.log("Launching Puppeteer...");
     const browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
       headless: true,
@@ -56,23 +57,23 @@ const scrapeEvents = async () => {
     
     const page = await browser.newPage();
 
-    console.log("🔵 Navigating to Eventbrite...");
+    console.log("Navigating to Eventbrite...");
     await page.goto("https://www.eventbrite.com/d/australia--sydney/events/", {
       waitUntil: "networkidle2",
       timeout: 90000,
     });
 
-    console.log("🟢 Scrolling to load more events...");
+    console.log("Scrolling to load more events...");
     await autoScroll(page);
     await new Promise(resolve => setTimeout(resolve, 2000));
     // Allow extra time for images to load
 
-    console.log("🟡 Extracting event details...");
+    console.log("Extracting event details...");
     const events = await page.evaluate(() => {
       return Array.from(document.querySelectorAll(".discover-vertical-event-card")).map((eventElement) => {
         const title = eventElement.querySelector(".event-card-link")?.getAttribute("aria-label")?.trim() || "Unknown Title";
         const dateElement = eventElement.querySelector("p[class*='Typography_root']");
-    const date = dateElement ? dateElement.textContent.trim() : "N/A";
+        const date = dateElement ? dateElement.textContent.trim() : "N/A";
         const location = eventElement.querySelector("[data-event-location]")?.getAttribute("data-event-location") || "Unknown Location";
         const link = eventElement.querySelector(".event-card-link")?.href || "#";
         const imgElement = eventElement.querySelector(".event-card-image");
@@ -85,19 +86,19 @@ const scrapeEvents = async () => {
       });
     });
 
-    console.log(`✅ Extracted ${events.length} events`);
+    console.log(`Extracted ${events.length} events`);
 
     if (events.length > 0) {
-      console.log("🔵 Saving events to the database...");
+      console.log("Saving events to the database...");
       await Event.deleteMany();
       await Event.insertMany(events);
-      console.log("✅ Events saved successfully!");
+      console.log("Events saved successfully!");
     } else {
       console.log("⚠️ No events found. Check selectors.");
     } 
     await browser.close();
   } catch (error) {
-    console.error("❌ Scraping Error:", error);
+    console.error("Scraping Error:", error);
   }
 };
 
@@ -136,10 +137,15 @@ app.get('/api/events/:id', async (req, res) => {
 });
 
  
+ 
+ 
 
-// Email collection route
 app.post("/api/collect-email", async (req, res) => {
   const { email, eventUrl } = req.body;
+
+  // Generate a 6-digit OTP
+  const otp = Math.floor( Math.random() * 900000); 
+  otpStore[email] = otp; // Store OTP in memory using the email as key  
 
   const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
@@ -155,17 +161,44 @@ app.post("/api/collect-email", async (req, res) => {
     from: process.env.EMAIL,
     to: email,
     subject: "Event Ticket Request",
-    text: `Click here to get your tickets: ${eventUrl}`,
+    text: `this is your otp: ${otp}`,  
   };
 
   try {
     await transporter.sendMail(mailOptions);
     res.status(200).json({ message: "Email sent successfully!" });
   } catch (error) {
-    console.error("❌ Email sending failed:", error); // Log full error
+    console.error("Email sending failed:", error); // Log full error
     res.status(500).json({ message: "Error sending email", error: error.message });
   }
 });
+
+
+app.post("/api/verify-otp", async (req, res) => {
+  const { email, otpEntered } = req.body;
+ 
+  const storedOtp = otpStore[email];
+
+  if (!storedOtp) {
+    return res.status(400).json({ message: "OTP not generated for this email." });
+  }
+
+  if (storedOtp.toString() === otpEntered.toString()) {
+    // OTP is correct, now send event data
+    const eventData = {
+      eventName: "Awesome Event",
+      date: "2025-05-01",
+      location: "Event Location",
+      price: "$50",
+    };
+    
+    res.status(200).json({ message: "OTP verified successfully!", eventData });
+  } else {
+    return res.status(400).json({ message: "Invalid OTP!" });
+  }
+});
+
+
 
 
 // Start server
